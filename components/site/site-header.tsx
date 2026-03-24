@@ -113,6 +113,12 @@ export function SiteHeader({ viewer }: { viewer: AuthenticatedUser | null }) {
                     <span className="font-semibold text-slate-950">{viewer.name}</span>
                     <span className="mx-2 text-slate-400">/</span>
                     <span>{USER_ROLE_LABELS[viewer.role]}</span>
+                    {viewer.organizationName ? (
+                      <>
+                        <span className="mx-2 text-slate-400">/</span>
+                        <span>{viewer.organizationName}</span>
+                      </>
+                    ) : null}
                   </div>
 
                   <Link

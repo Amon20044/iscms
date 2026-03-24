@@ -1,3 +1,4 @@
+
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
@@ -5,6 +6,7 @@ import {
   automationRuns,
   carriers,
   orders,
+  organizations,
   products,
   warehouseInventory,
   warehouses,
@@ -13,6 +15,7 @@ import {
 import {
   ORDER_STATE_DESCRIPTIONS,
   ORDER_STATE_SEQUENCE,
+  type AuthenticatedUser,
   type Carrier,
   type CarrierSignal,
   type CreateOrderInput,
@@ -22,7 +25,9 @@ import {
   type Order,
   type OrderMutationInput,
   type OrderState,
+  type Organization,
   type Priority,
+  type Product,
   type Region,
   type StoreMeta,
   type UserRole,
@@ -49,14 +54,21 @@ export function isSupplyChainError(error: unknown): error is SupplyChainError {
 type InventoryBundle = {
   inventory: typeof warehouseInventory.$inferSelect;
   product: typeof products.$inferSelect;
+  organization: typeof organizations.$inferSelect;
   warehouse: typeof warehouses.$inferSelect;
 };
 
 type OrderBundle = {
   order: typeof orders.$inferSelect;
+  organization: typeof organizations.$inferSelect;
   product: typeof products.$inferSelect;
   warehouse: typeof warehouses.$inferSelect | null;
   carrier: typeof carriers.$inferSelect | null;
+};
+
+type ProductBundle = {
+  product: typeof products.$inferSelect;
+  organization: typeof organizations.$inferSelect;
 };
 
 type LogBundle = {
@@ -67,6 +79,22 @@ type LogBundle = {
 type DbClient = ReturnType<typeof getDb>;
 type DbTransaction = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 type DbExecutor = DbClient | DbTransaction;
+
+function getScopedOrganizationId(viewer: AuthenticatedUser) {
+  if (viewer.role !== "org_admin") {
+    return undefined;
+  }
+
+  if (!viewer.organizationId) {
+    throw new SupplyChainError(
+      "This org admin account is missing an organization assignment.",
+      403,
+      "org_assignment_missing"
+    );
+  }
+
+  return viewer.organizationId;
+}
 
 function toDate(value: Date | string) {
   return value instanceof Date ? value : new Date(value);
@@ -155,9 +183,34 @@ function normalizeFutureDate(value: unknown) {
   return date;
 }
 
+function mapOrganization(row: typeof organizations.$inferSelect): Organization {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+  };
+}
+
+function mapProduct(bundle: ProductBundle): Product {
+  return {
+    id: bundle.product.id,
+    organizationId: bundle.organization.id,
+    organizationCode: bundle.organization.code,
+    organizationName: bundle.organization.name,
+    sku: bundle.product.sku,
+    name: bundle.product.name,
+    category: bundle.product.category,
+    unitPrice: Number(bundle.product.unitPrice),
+    reorderPoint: bundle.product.reorderPoint,
+  };
+}
+
 function mapOrder(bundle: OrderBundle): Order {
   return {
     id: bundle.order.id,
+    organizationId: bundle.organization.id,
+    organizationCode: bundle.organization.code,
+    organizationName: bundle.organization.name,
     orderNumber: bundle.order.orderNumber,
     customerName: bundle.order.customerName,
     actorRole: bundle.order.actorRole,
@@ -198,22 +251,50 @@ function mapWorkflowLog(log: typeof workflowLogs.$inferSelect): WorkflowLog {
 
 async function loadOrderBundles(
   executor: DbExecutor,
-  orderId?: string
+  options?: {
+    orderId?: string;
+    viewer?: AuthenticatedUser;
+  }
 ): Promise<OrderBundle[]> {
+  const scopedOrganizationId = options?.viewer
+    ? getScopedOrganizationId(options.viewer)
+    : undefined;
+
   const baseQuery = executor
     .select({
       order: orders,
+      organization: organizations,
       product: products,
       warehouse: warehouses,
       carrier: carriers,
     })
     .from(orders)
+    .innerJoin(organizations, eq(orders.organizationId, organizations.id))
     .innerJoin(products, eq(orders.productId, products.id))
     .leftJoin(warehouses, eq(orders.assignedWarehouseId, warehouses.id))
     .leftJoin(carriers, eq(orders.assignedCarrierId, carriers.id));
 
-  if (orderId) {
-    return baseQuery.where(eq(orders.id, orderId)).orderBy(desc(orders.createdAt));
+  if (options?.orderId && scopedOrganizationId) {
+    return baseQuery
+      .where(
+        and(
+          eq(orders.id, options.orderId),
+          eq(orders.organizationId, scopedOrganizationId)
+        )
+      )
+      .orderBy(desc(orders.createdAt));
+  }
+
+  if (options?.orderId) {
+    return baseQuery
+      .where(eq(orders.id, options.orderId))
+      .orderBy(desc(orders.createdAt));
+  }
+
+  if (scopedOrganizationId) {
+    return baseQuery
+      .where(eq(orders.organizationId, scopedOrganizationId))
+      .orderBy(desc(orders.createdAt));
   }
 
   return baseQuery.orderBy(desc(orders.createdAt));
@@ -221,50 +302,121 @@ async function loadOrderBundles(
 
 async function loadInventoryBundles(
   executor: DbExecutor,
-  productId?: string
+  options?: {
+    organizationId?: string;
+    productId?: string;
+  }
 ): Promise<InventoryBundle[]> {
   const baseQuery = executor
     .select({
       inventory: warehouseInventory,
       product: products,
+      organization: organizations,
       warehouse: warehouses,
     })
     .from(warehouseInventory)
     .innerJoin(products, eq(warehouseInventory.productId, products.id))
+    .innerJoin(organizations, eq(products.organizationId, organizations.id))
     .innerJoin(warehouses, eq(warehouseInventory.warehouseId, warehouses.id));
 
-  if (productId) {
-    return baseQuery.where(eq(warehouseInventory.productId, productId));
+  if (options?.productId && options.organizationId) {
+    return baseQuery.where(
+      and(
+        eq(warehouseInventory.productId, options.productId),
+        eq(products.organizationId, options.organizationId)
+      )
+    );
+  }
+
+  if (options?.productId) {
+    return baseQuery.where(eq(warehouseInventory.productId, options.productId));
+  }
+
+  if (options?.organizationId) {
+    return baseQuery.where(eq(products.organizationId, options.organizationId));
   }
 
   return baseQuery;
 }
 
+async function loadProductBundles(
+  executor: DbExecutor,
+  organizationId?: string
+): Promise<ProductBundle[]> {
+  const baseQuery = executor
+    .select({
+      product: products,
+      organization: organizations,
+    })
+    .from(products)
+    .innerJoin(organizations, eq(products.organizationId, organizations.id));
+
+  if (organizationId) {
+    return baseQuery
+      .where(eq(products.organizationId, organizationId))
+      .orderBy(organizations.name, products.name);
+  }
+
+  return baseQuery.orderBy(organizations.name, products.name);
+}
+
+async function loadOrganizations(
+  executor: DbExecutor,
+  organizationId?: string
+): Promise<(typeof organizations.$inferSelect)[]> {
+  const baseQuery = executor.select().from(organizations);
+
+  if (organizationId) {
+    return baseQuery
+      .where(eq(organizations.id, organizationId))
+      .orderBy(organizations.name);
+  }
+
+  return baseQuery.orderBy(organizations.name);
+}
+
 async function loadRecentLogs(
   executor: DbExecutor,
-  limit = 10
+  options?: {
+    limit?: number;
+    organizationId?: string;
+  }
 ): Promise<LogBundle[]> {
-  const rows = await executor
+  const limit = options?.limit ?? 10;
+  const baseQuery = executor
     .select({
       log: workflowLogs,
       orderNumber: orders.orderNumber,
     })
     .from(workflowLogs)
-    .innerJoin(orders, eq(workflowLogs.orderId, orders.id))
-    .orderBy(desc(workflowLogs.createdAt))
-    .limit(limit);
+    .innerJoin(orders, eq(workflowLogs.orderId, orders.id));
+
+  const rows = options?.organizationId
+    ? await baseQuery
+        .where(eq(orders.organizationId, options.organizationId))
+        .orderBy(desc(workflowLogs.createdAt))
+        .limit(limit)
+    : await baseQuery.orderBy(desc(workflowLogs.createdAt)).limit(limit);
 
   return rows as LogBundle[];
 }
 
 async function loadLatestAutomationRun(
-  executor: DbExecutor
+  executor: DbExecutor,
+  organizationId?: string
 ): Promise<typeof automationRuns.$inferSelect | null> {
-  const [latestRun] = await executor
-    .select()
-    .from(automationRuns)
-    .orderBy(desc(automationRuns.createdAt))
-    .limit(1);
+  const [latestRun] = organizationId
+    ? await executor
+        .select()
+        .from(automationRuns)
+        .where(eq(automationRuns.organizationId, organizationId))
+        .orderBy(desc(automationRuns.createdAt))
+        .limit(1)
+    : await executor
+        .select()
+        .from(automationRuns)
+        .orderBy(desc(automationRuns.createdAt))
+        .limit(1);
 
   return latestRun ?? null;
 }
@@ -272,15 +424,21 @@ async function loadLatestAutomationRun(
 function createMeta(
   orderBundles: OrderBundle[],
   recentLogs: LogBundle[],
-  latestAutomationRun: typeof automationRuns.$inferSelect | null
+  latestAutomationRun: typeof automationRuns.$inferSelect | null,
+  scopeLabel: string
 ): StoreMeta {
   const dates = [
-    ...orderBundles.flatMap((bundle) => [bundle.order.createdAt, bundle.order.lastUpdatedAt]),
+    ...orderBundles.flatMap((bundle) => [
+      bundle.order.createdAt,
+      bundle.order.lastUpdatedAt,
+    ]),
     ...recentLogs.map((entry) => entry.log.createdAt),
     ...(latestAutomationRun ? [latestAutomationRun.createdAt] : []),
   ].map((value) => toDate(value));
 
-  const sortedDates = [...dates].sort((left, right) => left.getTime() - right.getTime());
+  const sortedDates = [...dates].sort(
+    (left, right) => left.getTime() - right.getTime()
+  );
   const seededAt = sortedDates[0] ?? new Date();
   const updatedAt = sortedDates.at(-1) ?? new Date();
   const summaries = latestAutomationRun?.summary
@@ -288,13 +446,14 @@ function createMeta(
     : ["Automation has not been executed yet."];
 
   return {
-    version: 2,
+    version: 3,
     seededAt: seededAt.toISOString(),
     updatedAt: updatedAt.toISOString(),
     lastAutomationRunAt: (
       latestAutomationRun?.createdAt ?? updatedAt
     ).toISOString(),
     lastAutomationSummary: summaries,
+    scopeLabel,
   };
 }
 
@@ -305,18 +464,26 @@ function selectWarehouseCandidate(
   excludeWarehouseId?: string
 ) {
   const candidates = inventoryRows
-    .filter((entry) => !excludeWarehouseId || entry.warehouse.id !== excludeWarehouseId)
     .filter(
-      (entry) => entry.inventory.availableUnits - entry.inventory.reservedUnits >= quantity
+      (entry) =>
+        !excludeWarehouseId || entry.warehouse.id !== excludeWarehouseId
+    )
+    .filter(
+      (entry) =>
+        entry.inventory.availableUnits - entry.inventory.reservedUnits >=
+        quantity
     )
     .sort((left, right) => {
-      const regionScore = Number(right.warehouse.region === region) - Number(left.warehouse.region === region);
+      const regionScore =
+        Number(right.warehouse.region === region) -
+        Number(left.warehouse.region === region);
 
       if (regionScore !== 0) {
         return regionScore;
       }
 
-      const capacityScore = right.warehouse.capacityScore - left.warehouse.capacityScore;
+      const capacityScore =
+        right.warehouse.capacityScore - left.warehouse.capacityScore;
 
       if (capacityScore !== 0) {
         return capacityScore;
@@ -339,7 +506,8 @@ function selectCarrierCandidate(
     .filter((carrier) => carrier.supportedRegions.includes(region))
     .sort((left, right) => {
       const statusWeight =
-        (right.status === "active" ? 2 : 1) - (left.status === "active" ? 2 : 1);
+        (right.status === "active" ? 2 : 1) -
+        (left.status === "active" ? 2 : 1);
 
       if (statusWeight !== 0) {
         return statusWeight;
@@ -462,7 +630,7 @@ function buildWorkflowStats(orderBundles: OrderBundle[]): WorkflowStat[] {
     {
       label: "Total orders",
       value: `${total}`,
-      hint: "Orders currently stored in Neon Postgres.",
+      hint: "Orders currently visible inside the active scope.",
       tone: "ink",
     },
     {
@@ -480,7 +648,7 @@ function buildWorkflowStats(orderBundles: OrderBundle[]): WorkflowStat[] {
     {
       label: "Recent fill rate",
       value: `${fillRate}%`,
-      hint: "Delivered in the last 24 hours against total seeded workload.",
+      hint: "Delivered in the last 24 hours against the visible workload.",
       tone: "amber",
     },
   ];
@@ -499,7 +667,8 @@ function buildInventorySignals(rows: InventoryBundle[]): InventorySignal[] {
   return [...grouped.values()].map((group) => {
     const [sample] = group;
     const availableUnits = group.reduce(
-      (sum, entry) => sum + entry.inventory.availableUnits - entry.inventory.reservedUnits,
+      (sum, entry) =>
+        sum + entry.inventory.availableUnits - entry.inventory.reservedUnits,
       0
     );
     const reservedUnits = group.reduce(
@@ -519,6 +688,8 @@ function buildInventorySignals(rows: InventoryBundle[]): InventorySignal[] {
           : "healthy";
 
     return {
+      organizationCode: sample.organization.code,
+      organizationName: sample.organization.name,
       sku: sample.product.sku,
       name: sample.product.name,
       category: sample.product.category,
@@ -567,7 +738,8 @@ function buildWarehouseSignals(
     lowStockSkus: inventoryRows.filter(
       (row) =>
         row.warehouse.id === warehouse.id &&
-        row.inventory.availableUnits - row.inventory.reservedUnits <= row.inventory.safetyStock
+        row.inventory.availableUnits - row.inventory.reservedUnits <=
+          row.inventory.safetyStock
     ).length,
   }));
 }
@@ -577,11 +749,15 @@ function buildDelayAlerts(orderBundles: OrderBundle[]): DelayAlert[] {
     .filter((bundle) => bundle.order.currentState === "delayed")
     .map((bundle) => ({
       orderId: bundle.order.id,
+      organizationName: bundle.organization.name,
       customerName: bundle.order.customerName,
       reason: bundle.order.delayReason ?? "Delay threshold crossed.",
       carrierName: bundle.carrier?.name ?? "Unassigned",
       warehouseName: bundle.warehouse?.name ?? "Unassigned",
-      hoursPastDue: Math.max(0, differenceInHours(new Date(), bundle.order.expectedDeliveryAt)),
+      hoursPastDue: Math.max(
+        0,
+        differenceInHours(new Date(), bundle.order.expectedDeliveryAt)
+      ),
     }))
     .sort((left, right) => right.hoursPastDue - left.hoursPastDue);
 }
@@ -589,20 +765,28 @@ function buildDelayAlerts(orderBundles: OrderBundle[]): DelayAlert[] {
 function buildStateCounts(orderBundles: OrderBundle[]) {
   return ORDER_STATE_SEQUENCE.map((state) => ({
     state,
-    count: orderBundles.filter((bundle) => bundle.order.currentState === state).length,
+    count: orderBundles.filter((bundle) => bundle.order.currentState === state)
+      .length,
     description: ORDER_STATE_DESCRIPTIONS[state],
   }));
 }
 
-async function getMappedOrderById(executor: DbExecutor, orderId: string) {
-  const bundle = await getOrderBundleById(executor, orderId);
+async function getMappedOrderById(
+  executor: DbExecutor,
+  viewer: AuthenticatedUser,
+  orderId: string
+) {
+  const bundle = await getOrderBundleById(executor, viewer, orderId);
   return mapOrder(bundle);
 }
 
 function validateOrderInput(input: CreateOrderInput): CreateOrderInput {
   return {
     customerName: normalizeText(input.customerName, "Customer name"),
-    actorRole: normalizeEnum(input.actorRole, ["admin", "customer"], "Actor role"),
+    organizationId:
+      typeof input.organizationId === "string" && input.organizationId.trim()
+        ? input.organizationId.trim()
+        : undefined,
     productSku: normalizeText(input.productSku, "Product"),
     quantity: normalizeQuantity(input.quantity),
     deliveryLocation: normalizeText(input.deliveryLocation, "Delivery location"),
@@ -620,8 +804,12 @@ function validateOrderInput(input: CreateOrderInput): CreateOrderInput {
   };
 }
 
-async function getOrderBundleById(executor: DbExecutor, orderId: string) {
-  const [bundle] = await loadOrderBundles(executor, orderId);
+async function getOrderBundleById(
+  executor: DbExecutor,
+  viewer: AuthenticatedUser,
+  orderId: string
+) {
+  const [bundle] = await loadOrderBundles(executor, { orderId, viewer });
 
   if (!bundle) {
     throw new SupplyChainError("Order not found.", 404, "order_not_found");
@@ -630,20 +818,23 @@ async function getOrderBundleById(executor: DbExecutor, orderId: string) {
   return bundle as OrderBundle;
 }
 
-export async function listOrders() {
+export async function listOrders(viewer: AuthenticatedUser) {
   const db = getDb();
-  const bundles = await loadOrderBundles(db);
+  const bundles = await loadOrderBundles(db, { viewer });
   return bundles.map(mapOrder);
 }
 
-export async function getOrderById(orderId: string) {
+export async function getOrderById(viewer: AuthenticatedUser, orderId: string) {
   const db = getDb();
-  const bundle = await getOrderBundleById(db, orderId);
+  const bundle = await getOrderBundleById(db, viewer, orderId);
   return mapOrder(bundle);
 }
 
-export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
+export async function getDashboardSnapshot(
+  viewer: AuthenticatedUser
+): Promise<DashboardSnapshot> {
   const db = getDb();
+  const scopedOrganizationId = getScopedOrganizationId(viewer);
   const [
     orderBundles,
     inventoryRows,
@@ -652,26 +843,44 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     carrierRows,
     productRows,
     warehouseRows,
+    organizationRows,
   ] = await Promise.all([
-      loadOrderBundles(db),
-      loadInventoryBundles(db),
-      loadRecentLogs(db, 12),
-      loadLatestAutomationRun(db),
-      db.select().from(carriers),
-      db.select().from(products),
-      db.select().from(warehouses),
-    ]);
+    loadOrderBundles(db, { viewer }),
+    loadInventoryBundles(db, { organizationId: scopedOrganizationId }),
+    loadRecentLogs(db, { limit: 12, organizationId: scopedOrganizationId }),
+    loadLatestAutomationRun(db, scopedOrganizationId),
+    db.select().from(carriers),
+    loadProductBundles(db, scopedOrganizationId),
+    db.select().from(warehouses),
+    loadOrganizations(db, scopedOrganizationId),
+  ]);
+
+  const warehouseIdsInScope = new Set<string>([
+    ...inventoryRows.map((row) => row.warehouse.id),
+    ...orderBundles
+      .map((bundle) => bundle.warehouse?.id)
+      .filter((value): value is string => Boolean(value)),
+  ]);
+
+  const warehousesForView = scopedOrganizationId
+    ? warehouseRows.filter((warehouse) => warehouseIdsInScope.has(warehouse.id))
+    : warehouseRows;
+  const carriersForView = scopedOrganizationId
+    ? carrierRows.filter((carrier) =>
+        orderBundles.some((bundle) => bundle.order.assignedCarrierId === carrier.id)
+      )
+    : carrierRows;
 
   return {
-    meta: createMeta(orderBundles, recentLogs, latestRun),
-    products: productRows.map((product) => ({
-      sku: product.sku,
-      name: product.name,
-      category: product.category,
-      unitPrice: Number(product.unitPrice),
-      reorderPoint: product.reorderPoint,
-    })),
-    warehouses: warehouseRows.map((warehouse) => ({
+    meta: createMeta(
+      orderBundles,
+      recentLogs,
+      latestRun,
+      viewer.organizationName ?? "All organizations"
+    ),
+    organizations: organizationRows.map(mapOrganization),
+    products: productRows.map(mapProduct),
+    warehouses: warehousesForView.map((warehouse) => ({
       id: warehouse.id,
       name: warehouse.name,
       city: warehouse.city,
@@ -679,7 +888,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       handlingHours: warehouse.handlingHours,
       capacityScore: warehouse.capacityScore,
     })),
-    carriers: carrierRows.map((carrier) => ({
+    carriers: carriersForView.map((carrier) => ({
       id: carrier.id,
       name: carrier.name,
       status: carrier.status,
@@ -691,32 +900,76 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     orders: orderBundles.map(mapOrder),
     workflowStats: buildWorkflowStats(orderBundles),
     inventorySignals: buildInventorySignals(inventoryRows),
-    carrierSignals: buildCarrierSignals(carrierRows, orderBundles),
-    warehouseSignals: buildWarehouseSignals(warehouseRows, inventoryRows, orderBundles),
+    carrierSignals: buildCarrierSignals(carriersForView, orderBundles),
+    warehouseSignals: buildWarehouseSignals(
+      warehousesForView,
+      inventoryRows,
+      orderBundles
+    ),
     delayAlerts: buildDelayAlerts(orderBundles),
     recentLogs: recentLogs.map((entry) =>
-      mapWorkflowLog({ ...entry.log, summary: `${entry.orderNumber}: ${entry.log.summary}` })
+      mapWorkflowLog({
+        ...entry.log,
+        summary: `${entry.orderNumber}: ${entry.log.summary}`,
+      })
     ),
     stateCounts: buildStateCounts(orderBundles),
   };
 }
 
-export async function createOrder(input: CreateOrderInput) {
+export async function createOrder(viewer: AuthenticatedUser, input: CreateOrderInput) {
   const db = getDb();
   const payload = validateOrderInput(input);
 
   return db.transaction(async (tx) => {
+    const scopedOrganizationId = getScopedOrganizationId(viewer);
+    const organizationId = scopedOrganizationId ?? payload.organizationId;
+
+    if (!organizationId) {
+      throw new SupplyChainError(
+        "Choose an organization before creating the order.",
+        400,
+        "missing_organization"
+      );
+    }
+
+    const [organization] = await tx
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+
+    if (!organization) {
+      throw new SupplyChainError(
+        "Selected organization does not exist.",
+        404,
+        "organization_not_found"
+      );
+    }
+
     const [product] = await tx
       .select()
       .from(products)
-      .where(eq(products.sku, payload.productSku))
+      .where(
+        and(
+          eq(products.sku, payload.productSku),
+          eq(products.organizationId, organization.id)
+        )
+      )
       .limit(1);
 
     if (!product) {
-      throw new SupplyChainError("Selected product does not exist.", 404, "product_not_found");
+      throw new SupplyChainError(
+        "Selected product does not exist for this organization.",
+        404,
+        "product_not_found"
+      );
     }
 
-    const inventoryRows = await loadInventoryBundles(tx, product.id);
+    const inventoryRows = await loadInventoryBundles(tx, {
+      productId: product.id,
+      organizationId: organization.id,
+    });
     const selectedInventory = selectWarehouseCandidate(
       inventoryRows,
       payload.region,
@@ -753,9 +1006,10 @@ export async function createOrder(input: CreateOrderInput) {
     const [createdOrder] = await tx
       .insert(orders)
       .values({
+        organizationId: organization.id,
         orderNumber: createOrderNumber(),
         customerName: payload.customerName,
-        actorRole: payload.actorRole,
+        actorRole: viewer.role,
         productId: product.id,
         quantity: payload.quantity,
         priority: payload.priority,
@@ -786,9 +1040,9 @@ export async function createOrder(input: CreateOrderInput) {
     await insertWorkflowLog(
       tx,
       createdOrder.id,
-      payload.actorRole,
+      viewer.role,
       "Order created",
-      `${payload.customerName} submitted ${payload.quantity} units of ${product.name}.`,
+      `${payload.customerName} submitted ${payload.quantity} units of ${product.name} for ${organization.name}.`,
       undefined,
       "created",
       now
@@ -805,7 +1059,7 @@ export async function createOrder(input: CreateOrderInput) {
       now
     );
 
-    const bundle = await getOrderBundleById(tx, createdOrder.id);
+    const bundle = await getOrderBundleById(tx, viewer, createdOrder.id);
 
     return {
       message: "Order created and routed successfully.",
@@ -814,11 +1068,15 @@ export async function createOrder(input: CreateOrderInput) {
   });
 }
 
-export async function updateOrder(orderId: string, input: OrderMutationInput) {
+export async function updateOrder(
+  viewer: AuthenticatedUser,
+  orderId: string,
+  input: OrderMutationInput
+) {
   const db = getDb();
 
   return db.transaction(async (tx) => {
-    const bundle = await getOrderBundleById(tx, orderId);
+    const bundle = await getOrderBundleById(tx, viewer, orderId);
 
     if (input.action === "MARK_DELIVERED") {
       if (bundle.order.currentState === "delivered") {
@@ -831,23 +1089,30 @@ export async function updateOrder(orderId: string, input: OrderMutationInput) {
       await deliverOrder(
         tx,
         bundle,
-        input.actorRole ?? "admin",
+        input.actorRole ?? viewer.role,
         input.note ?? "Order manually confirmed as delivered by an administrator."
       );
 
       return {
         message: "Order marked as delivered.",
-        order: await getMappedOrderById(tx, orderId),
+        order: await getMappedOrderById(tx, viewer, orderId),
       };
     }
 
     const now = new Date();
     const carrierRows = await tx.select().from(carriers);
-    const inventoryRows = await loadInventoryBundles(tx, bundle.order.productId);
+    const inventoryRows = await loadInventoryBundles(tx, {
+      productId: bundle.order.productId,
+      organizationId: bundle.order.organizationId,
+    });
 
     const nextCarrier = input.carrierId
       ? carrierRows.find((carrier) => carrier.id === input.carrierId) ?? null
-      : selectCarrierCandidate(carrierRows, bundle.order.region, bundle.order.assignedCarrierId ?? undefined);
+      : selectCarrierCandidate(
+          carrierRows,
+          bundle.order.region,
+          bundle.order.assignedCarrierId ?? undefined
+        );
     const nextWarehouse = input.warehouseId
       ? inventoryRows.find((row) => row.warehouse.id === input.warehouseId) ?? null
       : null;
@@ -879,7 +1144,11 @@ export async function updateOrder(orderId: string, input: OrderMutationInput) {
       );
     }
 
-    if (nextWarehouse && bundle.order.assignedWarehouseId && nextWarehouse.warehouse.id !== bundle.order.assignedWarehouseId) {
+    if (
+      nextWarehouse &&
+      bundle.order.assignedWarehouseId &&
+      nextWarehouse.warehouse.id !== bundle.order.assignedWarehouseId
+    ) {
       await tx
         .update(warehouseInventory)
         .set({
@@ -926,7 +1195,7 @@ export async function updateOrder(orderId: string, input: OrderMutationInput) {
     await insertWorkflowLog(
       tx,
       bundle.order.id,
-      input.actorRole ?? "admin",
+      input.actorRole ?? viewer.role,
       "Admin reassignment",
       input.note ??
         `${targetWarehouse.name} and ${targetCarrier.name} were selected as the recovery route.`,
@@ -937,17 +1206,18 @@ export async function updateOrder(orderId: string, input: OrderMutationInput) {
 
     return {
       message: "Order reassigned successfully.",
-      order: await getMappedOrderById(tx, orderId),
+      order: await getMappedOrderById(tx, viewer, orderId),
     };
   });
 }
 
-export async function runAutomationCycle() {
+export async function runAutomationCycle(viewer: AuthenticatedUser) {
   const db = getDb();
+  const scopedOrganizationId = getScopedOrganizationId(viewer);
 
   return db.transaction(async (tx) => {
     const now = new Date();
-    const orderBundles = await loadOrderBundles(tx);
+    const orderBundles = await loadOrderBundles(tx, { viewer });
     const carrierRows = await tx.select().from(carriers);
     const summaries: string[] = [];
 
@@ -1097,6 +1367,7 @@ export async function runAutomationCycle() {
       : ["All active shipments remain on their current plan."];
 
     await tx.insert(automationRuns).values({
+      organizationId: scopedOrganizationId ?? null,
       summary: finalSummary.join("\n"),
       actionsCount: finalSummary.length,
       createdAt: now,

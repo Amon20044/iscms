@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await requireRouteUser(DASHBOARD_ROLES);
-    const snapshot = await getDashboardSnapshot();
+    const user = await requireRouteUser(DASHBOARD_ROLES);
+    const snapshot = await getDashboardSnapshot(user);
     return NextResponse.json(snapshot);
   } catch (error) {
     return handleRouteError(error);

@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await requireRouteUser(DASHBOARD_ROLES);
-    const orders = await listOrders();
+    const user = await requireRouteUser(DASHBOARD_ROLES);
+    const orders = await listOrders(user);
     return NextResponse.json({ orders });
   } catch (error) {
     return handleRouteError(error);
@@ -20,9 +20,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireRouteUser(DASHBOARD_ROLES);
+    const user = await requireRouteUser(DASHBOARD_ROLES);
     const payload = await request.json();
-    const result = await createOrder(payload);
+    const result = await createOrder(user, payload);
     revalidatePath("/dashboard");
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

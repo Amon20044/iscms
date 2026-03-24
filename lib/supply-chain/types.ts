@@ -15,7 +15,17 @@ export type CarrierStatus = "active" | "degraded" | "offline";
 export type Priority = "standard" | "express" | "critical";
 export type Region = "north" | "west" | "south" | "east" | "central";
 
+export interface Organization {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface Product {
+  id: string;
+  organizationId: string;
+  organizationCode: string;
+  organizationName: string;
   sku: string;
   name: string;
   category: string;
@@ -53,6 +63,9 @@ export interface Carrier {
 
 export interface Order {
   id: string;
+  organizationId: string;
+  organizationCode: string;
+  organizationName: string;
   orderNumber: string;
   customerName: string;
   actorRole: UserRole;
@@ -94,6 +107,9 @@ export interface AuthenticatedUser {
   name: string;
   email: string;
   role: UserRole;
+  organizationId?: string;
+  organizationCode?: string;
+  organizationName?: string;
 }
 
 export interface InternalAccessUser {
@@ -103,6 +119,9 @@ export interface InternalAccessUser {
   id: string;
   name: string;
   role: UserRole;
+  organizationId?: string;
+  organizationCode?: string;
+  organizationName?: string;
 }
 
 export interface StoreMeta {
@@ -111,6 +130,7 @@ export interface StoreMeta {
   updatedAt: string;
   lastAutomationRunAt: string;
   lastAutomationSummary: string[];
+  scopeLabel: string;
 }
 
 export interface WorkflowStat {
@@ -121,6 +141,8 @@ export interface WorkflowStat {
 }
 
 export interface InventorySignal {
+  organizationCode: string;
+  organizationName: string;
   sku: string;
   name: string;
   category: string;
@@ -151,6 +173,7 @@ export interface WarehouseSignal {
 
 export interface DelayAlert {
   orderId: string;
+  organizationName: string;
   customerName: string;
   reason: string;
   carrierName: string;
@@ -166,6 +189,7 @@ export interface StateCount {
 
 export interface DashboardSnapshot {
   meta: StoreMeta;
+  organizations: Organization[];
   products: Product[];
   warehouses: Warehouse[];
   carriers: Carrier[];
@@ -181,7 +205,7 @@ export interface DashboardSnapshot {
 
 export interface CreateOrderInput {
   customerName: string;
-  actorRole: UserRole;
+  organizationId?: string;
   productSku: string;
   quantity: number;
   deliveryLocation: string;

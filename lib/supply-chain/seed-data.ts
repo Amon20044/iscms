@@ -6,24 +6,61 @@ import type {
   UserRole,
 } from "@/lib/supply-chain/types";
 
+export const seedOrganizations = [
+  {
+    id: "01000000-0000-4000-8000-000000000001",
+    code: "NORTHPEAK",
+    name: "NorthPeak Health Network",
+  },
+  {
+    id: "01000000-0000-4000-8000-000000000002",
+    code: "CELSIA",
+    name: "Celsia Cold Chain Foods",
+  },
+  {
+    id: "01000000-0000-4000-8000-000000000003",
+    code: "METROMART",
+    name: "MetroMart Retail Group",
+  },
+];
+
 export const seedUserProfiles = [
   {
     id: "00000000-0000-4000-8000-000000000001",
     authUserId: "seed-owner",
+    organizationCode: null,
     name: "Avni Singhal",
     email: "avni.owner@srs.local",
     role: "owner" as UserRole,
   },
   {
     id: "00000000-0000-4000-8000-000000000002",
+    authUserId: "seed-org-admin",
+    organizationCode: "NORTHPEAK",
+    name: "Nandish Chauhan",
+    email: "nandish.orgadmin@srs.local",
+    role: "org_admin" as UserRole,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000003",
+    authUserId: "seed-platform-admin",
+    organizationCode: null,
+    name: "Arpit Maheshwari",
+    email: "arpit.admin@srs.local",
+    role: "admin" as UserRole,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000004",
     authUserId: "seed-customer",
+    organizationCode: "METROMART",
     name: "Ashay Gupta",
     email: "ashay@example.com",
     role: "customer" as UserRole,
   },
   {
-    id: "00000000-0000-4000-8000-000000000003",
+    id: "00000000-0000-4000-8000-000000000005",
     authUserId: "seed-ads",
+    organizationCode: null,
     name: "Automated Decision System",
     email: null,
     role: "automated_system" as UserRole,
@@ -35,17 +72,38 @@ export const seedOwnerCredentials = {
   password: process.env.SEED_OWNER_PASSWORD ?? "AvniOwner@2026",
 };
 
+export const seedOrgAdminCredentials = {
+  email: "nandish.orgadmin@srs.local",
+  password: process.env.SEED_ORG_ADMIN_PASSWORD ?? "NandishOrg@2026",
+};
+
+export const seedAdminCredentials = {
+  email: "arpit.admin@srs.local",
+  password: process.env.SEED_ADMIN_PASSWORD ?? "ArpitAdmin@2026",
+};
+
 export const seedAuthAccounts = [
   {
     id: "70000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000001",
     password: seedOwnerCredentials.password,
   },
+  {
+    id: "70000000-0000-4000-8000-000000000002",
+    profileId: "00000000-0000-4000-8000-000000000002",
+    password: seedOrgAdminCredentials.password,
+  },
+  {
+    id: "70000000-0000-4000-8000-000000000003",
+    profileId: "00000000-0000-4000-8000-000000000003",
+    password: seedAdminCredentials.password,
+  },
 ];
 
 export const seedProducts = [
   {
     id: "10000000-0000-4000-8000-000000000001",
+    organizationCode: "NORTHPEAK",
     sku: "RFID-KIT",
     name: "RFID Sensor Kit",
     category: "Tracking",
@@ -54,6 +112,7 @@ export const seedProducts = [
   },
   {
     id: "10000000-0000-4000-8000-000000000002",
+    organizationCode: "NORTHPEAK",
     sku: "PUMP-AX4",
     name: "Hydraulic Pump Assembly",
     category: "Industrial",
@@ -62,6 +121,7 @@ export const seedProducts = [
   },
   {
     id: "10000000-0000-4000-8000-000000000003",
+    organizationCode: "CELSIA",
     sku: "COLD-CRATE",
     name: "Cold Chain Smart Crate",
     category: "Cold Storage",
@@ -70,6 +130,7 @@ export const seedProducts = [
   },
   {
     id: "10000000-0000-4000-8000-000000000004",
+    organizationCode: "METROMART",
     sku: "PALLET-IQ",
     name: "Pallet IQ Tag Pack",
     category: "Warehouse Ops",
@@ -229,10 +290,11 @@ export const seedInventory = [
 export const seedOrders = [
   {
     id: "50000000-0000-4000-8000-000000000001",
+    organizationCode: "METROMART",
     orderNumber: "SRS-1001",
     customerName: "Varma Retail",
     actorRole: "customer" as UserRole,
-    productSku: "RFID-KIT",
+    productSku: "PALLET-IQ",
     quantity: 12,
     priority: "express" as Priority,
     deliveryLocation: "Pune, Maharashtra",
@@ -251,9 +313,10 @@ export const seedOrders = [
   },
   {
     id: "50000000-0000-4000-8000-000000000002",
+    organizationCode: "NORTHPEAK",
     orderNumber: "SRS-1002",
     customerName: "NorthPeak Hospitals",
-    actorRole: "admin" as UserRole,
+    actorRole: "org_admin" as UserRole,
     productSku: "PUMP-AX4",
     quantity: 4,
     priority: "critical" as Priority,
@@ -273,6 +336,7 @@ export const seedOrders = [
   },
   {
     id: "50000000-0000-4000-8000-000000000003",
+    organizationCode: "CELSIA",
     orderNumber: "SRS-1003",
     customerName: "Celsia Foods",
     actorRole: "admin" as UserRole,
@@ -295,6 +359,7 @@ export const seedOrders = [
   },
   {
     id: "50000000-0000-4000-8000-000000000004",
+    organizationCode: "NORTHPEAK",
     orderNumber: "SRS-1004",
     customerName: "Aster Labs",
     actorRole: "admin" as UserRole,
@@ -317,8 +382,9 @@ export const seedOrders = [
   },
   {
     id: "50000000-0000-4000-8000-000000000005",
+    organizationCode: "METROMART",
     orderNumber: "SRS-1005",
-    customerName: "MetroMart",
+    customerName: "MetroMart Central",
     actorRole: "customer" as UserRole,
     productSku: "PALLET-IQ",
     quantity: 18,
@@ -345,7 +411,7 @@ export const seedLogs = [
     orderNumber: "SRS-1001",
     actor: "customer" as UserRole,
     action: "Order created",
-    summary: "Varma Retail created an express RFID shipment.",
+    summary: "Varma Retail created an express MetroMart pallet-tag shipment.",
     fromState: null,
     toState: "created" as OrderState,
     offsetHours: -18,
@@ -355,7 +421,7 @@ export const seedLogs = [
     orderNumber: "SRS-1001",
     actor: "automated_system" as UserRole,
     action: "Inventory allocated",
-    summary: "Mumbai Port Grid reserved 12 RFID kits for fulfilment.",
+    summary: "Mumbai Port Grid reserved 12 pallet tag packs for fulfilment.",
     fromState: "created" as OrderState,
     toState: "assigned" as OrderState,
     offsetHours: -17.6,
@@ -373,7 +439,7 @@ export const seedLogs = [
   {
     id: "60000000-0000-4000-8000-000000000004",
     orderNumber: "SRS-1002",
-    actor: "admin" as UserRole,
+    actor: "org_admin" as UserRole,
     action: "Order created",
     summary: "NorthPeak Hospitals placed a critical hydraulic pump order.",
     fromState: null,
@@ -412,8 +478,22 @@ export const seedLogs = [
   },
 ];
 
-export const seedAutomationSummary = [
-  "1 delayed order needs intervention.",
-  "1 reassigned shipment is back inside ETA guardrails.",
-  "2 warehouses are operating above 90% capacity score.",
+export const seedAutomationRuns = [
+  {
+    id: "80000000-0000-4000-8000-000000000001",
+    organizationCode: null,
+    summary: [
+      "1 delayed order needs intervention.",
+      "1 reassigned shipment is back inside ETA guardrails.",
+      "2 warehouses are operating above 90% capacity score.",
+    ],
+  },
+  {
+    id: "80000000-0000-4000-8000-000000000002",
+    organizationCode: "NORTHPEAK",
+    summary: [
+      "NorthPeak has 1 delayed critical order still under review.",
+      "RFID and hydraulic product lanes remain assigned to Delhi and Mumbai hubs.",
+    ],
+  },
 ];

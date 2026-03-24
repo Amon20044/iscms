@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
-import { ArrowRight, KeyRound, Mail } from "lucide-react";
+import { useActionState, useState } from "react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
 import { loginAction, type LoginFormState } from "@/app/login/actions";
 
 const initialState: LoginFormState = undefined;
 
 export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, initialState);
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <form action={action} className="glass-panel rounded-[2.2rem] p-7 sm:p-9">
@@ -29,7 +30,6 @@ export function LoginForm() {
             <Mail className="h-4 w-4 text-slate-500" />
             <input
               className="w-full bg-transparent text-sm text-slate-800 outline-none"
-              defaultValue="avni.owner@srs.local"
               name="email"
               placeholder="you@company.com"
               type="email"
@@ -45,11 +45,18 @@ export function LoginForm() {
             <KeyRound className="h-4 w-4 text-slate-500" />
             <input
               className="w-full bg-transparent text-sm text-slate-800 outline-none"
-              defaultValue="AvniOwner@2026"
               name="password"
               placeholder="Enter password"
-              type="password"
+              type={showPassword ? "text" : "password"}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="text-slate-400 hover:text-slate-600"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
         </label>
       </div>

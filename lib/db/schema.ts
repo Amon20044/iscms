@@ -49,11 +49,30 @@ export const regionEnum = pgEnum("region", [
   "central",
 ]);
 
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("organizations_name_idx").on(table.name)]
+);
+
 export const appUserProfiles = pgTable(
   "app_user_profiles",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     authUserId: text("auth_user_id").notNull().unique(),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
     email: text("email").unique(),
     role: userRoleEnum("role").notNull().default("customer"),
@@ -64,7 +83,10 @@ export const appUserProfiles = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("app_user_profiles_role_idx").on(table.role)]
+  (table) => [
+    index("app_user_profiles_role_idx").on(table.role),
+    index("app_user_profiles_org_idx").on(table.organizationId),
+  ]
 );
 
 export const authAccounts = pgTable(
@@ -119,6 +141,9 @@ export const products = pgTable(
   "products",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
     sku: text("sku").notNull().unique(),
     name: text("name").notNull(),
     category: text("category").notNull(),
@@ -131,7 +156,10 @@ export const products = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("products_category_idx").on(table.category)]
+  (table) => [
+    index("products_category_idx").on(table.category),
+    index("products_org_idx").on(table.organizationId),
+  ]
 );
 
 export const warehouses = pgTable(
@@ -217,6 +245,9 @@ export const orders = pgTable(
   "orders",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
     orderNumber: text("order_number").notNull().unique(),
     customerName: text("customer_name").notNull(),
     actorRole: userRoleEnum("actor_role").notNull(),
@@ -254,6 +285,7 @@ export const orders = pgTable(
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (table) => [
+    index("orders_org_idx").on(table.organizationId),
     index("orders_state_idx").on(table.currentState),
     index("orders_region_idx").on(table.region),
     index("orders_expected_eta_idx").on(table.expectedDeliveryAt),
@@ -286,16 +318,33 @@ export const automationRuns = pgTable(
   "automation_runs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
     summary: text("summary").notNull(),
     actionsCount: integer("actions_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("automation_runs_created_idx").on(table.createdAt)]
+  (table) => [
+    index("automation_runs_created_idx").on(table.createdAt),
+    index("automation_runs_org_idx").on(table.organizationId),
+  ]
 );
 
-export const productRelations = relations(products, ({ many }) => ({
+export const organizationRelations = relations(organizations, ({ many }) => ({
+  members: many(appUserProfiles),
+  products: many(products),
+  orders: many(orders),
+  automationRuns: many(automationRuns),
+}));
+
+export const productRelations = relations(products, ({ many, one }) => ({
+  organization: one(organizations, {
+    fields: [products.organizationId],
+    references: [organizations.id],
+  }),
   inventoryRows: many(warehouseInventory),
   orders: many(orders),
 }));
@@ -306,6 +355,10 @@ export const appUserProfileRelations = relations(
     authAccount: one(authAccounts, {
       fields: [appUserProfiles.id],
       references: [authAccounts.profileId],
+    }),
+    organization: one(organizations, {
+      fields: [appUserProfiles.organizationId],
+      references: [organizations.id],
     }),
   })
 );
@@ -349,6 +402,10 @@ export const warehouseInventoryRelations = relations(
 );
 
 export const orderRelations = relations(orders, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [orders.organizationId],
+    references: [organizations.id],
+  }),
   product: one(products, {
     fields: [orders.productId],
     references: [products.id],
@@ -368,5 +425,12 @@ export const workflowLogRelations = relations(workflowLogs, ({ one }) => ({
   order: one(orders, {
     fields: [workflowLogs.orderId],
     references: [orders.id],
+  }),
+}));
+
+export const automationRunRelations = relations(automationRuns, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [automationRuns.organizationId],
+    references: [organizations.id],
   }),
 }));

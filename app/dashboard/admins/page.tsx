@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { AdminAccessPanel } from "@/components/dashboard/admin-access-panel";
 import {
   listInternalAccessUsers,
+  listOrganizations,
   requireOwnerUser,
 } from "@/lib/auth/service";
 
@@ -11,7 +12,11 @@ export const runtime = "nodejs";
 
 export default async function AdminsPage() {
   const viewer = await requireOwnerUser();
-  const users = await listInternalAccessUsers();
+  const [users, organizations] = await Promise.all([
+    listInternalAccessUsers(),
+    listOrganizations(),
+  ]);
+  const orgAdminCount = users.filter((user) => user.role === "org_admin").length;
 
   return (
     <main className="relative z-10 pb-16">
@@ -21,12 +26,12 @@ export default async function AdminsPage() {
             <div>
               <p className="section-kicker">Owner Access Layer</p>
               <h1 className="mt-4 text-5xl font-semibold leading-tight tracking-tight text-slate-900">
-                Team access and admin provisioning
+                Organizations, team access, and admin provisioning
               </h1>
               <p className="mt-5 max-w-3xl text-sm leading-8 text-slate-600">
-                This route exists only for the owner role. It is linked directly
-                from the navigation because access management is part of the
-                product workflow, not an afterthought in settings.
+                Owner controls now map to the real business model: create organizations,
+                attach org admins to one of those organizations, and keep platform-wide
+                admins separate from org-level operations.
               </p>
             </div>
 
@@ -47,37 +52,43 @@ export default async function AdminsPage() {
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="data-tile rounded-[1.7rem] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Internal users
-              </p>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-slate-500" />
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Organizations
+                </p>
+              </div>
               <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">
-                {users.length}
+                {organizations.length}
               </p>
             </div>
             <div className="data-tile rounded-[1.7rem] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Owner path
-              </p>
-              <p className="mt-3 text-lg font-semibold tracking-tight text-slate-900">
-                Navigation controlled
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-slate-500" />
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Internal users
+                </p>
+              </div>
+              <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">
+                {users.length}
               </p>
             </div>
             <div className="data-tile rounded-[1.7rem] p-5">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[#ca6b3f]" />
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  RBAC live
+                  Org admins
                 </p>
               </div>
-              <p className="mt-3 text-lg font-semibold tracking-tight text-slate-900">
-                Create org admins and admins
+              <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">
+                {orgAdminCount}
               </p>
             </div>
           </div>
         </section>
 
         <div className="mt-8">
-          <AdminAccessPanel users={users} />
+          <AdminAccessPanel organizations={organizations} users={users} />
         </div>
       </div>
     </main>

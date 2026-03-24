@@ -114,9 +114,8 @@ export default async function HomePage() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">Project: srs</span>
-                <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">Author: Avni Singhal</span>
-                <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">Neon + Drizzle + RBAC</span>
+                <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">Project: Inventory & Supply Chain Management System</span>
+                <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">NEXT.JS + REST API + PostGRES (NEON DB + DRIZZLE) + RBAC</span>
                 {viewer ? (
                   <span className="rounded-full border border-slate-900/10 bg-white/75 px-4 py-2">
                     Signed in as {USER_ROLE_LABELS[viewer.role]}
@@ -246,7 +245,7 @@ export default async function HomePage() {
           })}
         </section>
 
-        <section id="stack" className="mt-8 grid gap-6 xl:grid-cols-[1.05fr_0.95fr] scroll-mt-32">
+        <section id="stack" className="mt-8 scroll-mt-32">
           <div className="glass-panel rounded-[2rem] p-6 sm:p-8">
             <p className="section-kicker">Technology Stack</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
@@ -270,25 +269,6 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div className="glass-panel rounded-[2rem] p-6 sm:p-8">
-            <p className="section-kicker">Outcome</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-              The UX now has a proper product front door.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-slate-600">
-              Instead of dropping everyone into one generic page, the experience now separates discovery, secure access,
-              and role-aware operations. That makes the navigation meaningful for the domain and clearer for evaluators,
-              admins, and owners.
-            </p>
-            <div className="mt-6 rounded-[1.8rem] border border-slate-900/10 bg-slate-950 px-5 py-5 text-white">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/60">Current handoff</p>
-              <p className="mt-3 text-lg font-semibold">
-                {showDashboardCta
-                  ? `You are signed in as ${USER_ROLE_LABELS[viewer.role]}. Continue into the control tower.`
-                  : "Login to enter the secured control tower and role-aware dashboard."}
-              </p>
-            </div>
-          </div>
         </section>
       </div>
     </main>

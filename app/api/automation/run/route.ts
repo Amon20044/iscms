@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    await requireRouteUser(DASHBOARD_ROLES);
-    const result = await runAutomationCycle();
+    const user = await requireRouteUser(DASHBOARD_ROLES);
+    const result = await runAutomationCycle(user);
     revalidatePath("/dashboard");
     return NextResponse.json(result);
   } catch (error) {

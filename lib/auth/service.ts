@@ -1,14 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db/client";
-import { appUserProfiles, authAccounts, authSessions } from "@/lib/db/schema";
-import { createSessionToken, hashPassword, hashSessionToken, verifyPassword } from "@/lib/auth/password";
+import {
+  appUserProfiles,
+  authAccounts,
+  authSessions,
+  organizations,
+} from "@/lib/db/schema";
+import {
+  createSessionToken,
+  hashPassword,
+  hashSessionToken,
+  verifyPassword,
+} from "@/lib/auth/password";
 import {
   DASHBOARD_ROLES,
   type AuthenticatedUser,
   type InternalAccessUser,
+  type Organization,
   type UserRole,
 } from "@/lib/supply-chain/types";
 
@@ -38,6 +49,24 @@ function normalizeName(name: string) {
   return name.trim();
 }
 
+function normalizeOrganizationCode(code: string) {
+  const normalized = code
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (normalized.length < 2) {
+    throw new AuthError(
+      "Organization code must contain at least 2 letters or numbers.",
+      400,
+      "invalid_org_code"
+    );
+  }
+
+  return normalized;
+}
+
 function validatePasswordShape(password: string) {
   const trimmed = password.trim();
 
@@ -52,9 +81,20 @@ function validatePasswordShape(password: string) {
   return trimmed;
 }
 
+function mapOrganization(
+  organization: typeof organizations.$inferSelect
+): Organization {
+  return {
+    id: organization.id,
+    code: organization.code,
+    name: organization.name,
+  };
+}
+
 function mapAuthenticatedUser(row: {
   account: typeof authAccounts.$inferSelect;
   profile: typeof appUserProfiles.$inferSelect;
+  organization: typeof organizations.$inferSelect | null;
 }): AuthenticatedUser {
   return {
     id: row.profile.id,
@@ -62,6 +102,9 @@ function mapAuthenticatedUser(row: {
     name: row.profile.name,
     email: row.profile.email ?? "",
     role: row.profile.role,
+    organizationId: row.organization?.id ?? undefined,
+    organizationCode: row.organization?.code ?? undefined,
+    organizationName: row.organization?.name ?? undefined,
   };
 }
 
@@ -103,10 +146,12 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
     .select({
       account: authAccounts,
       profile: appUserProfiles,
+      organization: organizations,
     })
     .from(authSessions)
     .innerJoin(authAccounts, eq(authSessions.accountId, authAccounts.id))
     .innerJoin(appUserProfiles, eq(authAccounts.profileId, appUserProfiles.id))
+    .leftJoin(organizations, eq(appUserProfiles.organizationId, organizations.id))
     .where(
       and(
         eq(authSessions.sessionTokenHash, hashSessionToken(sessionToken)),
@@ -188,9 +233,11 @@ export async function createLoginSession(email: string, password: string) {
     .select({
       account: authAccounts,
       profile: appUserProfiles,
+      organization: organizations,
     })
     .from(authAccounts)
     .innerJoin(appUserProfiles, eq(authAccounts.profileId, appUserProfiles.id))
+    .leftJoin(organizations, eq(appUserProfiles.organizationId, organizations.id))
     .where(
       and(
         eq(appUserProfiles.email, normalizedEmail),
@@ -242,15 +289,63 @@ export async function logoutCurrentSession() {
   await clearSessionCookie();
 }
 
+export async function listOrganizations(): Promise<Organization[]> {
+  const db = getDb();
+  const rows = await db.select().from(organizations).orderBy(asc(organizations.name));
+  return rows.map(mapOrganization);
+}
+
+export async function createOrganization(input: { code: string; name: string }) {
+  const code = normalizeOrganizationCode(input.code);
+  const name = normalizeName(input.name);
+
+  if (!name) {
+    throw new AuthError("Organization name is required.", 400, "missing_org_name");
+  }
+
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const [existingOrganization] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.code, code))
+      .limit(1);
+
+    if (existingOrganization) {
+      throw new AuthError(
+        "An organization with this code already exists.",
+        409,
+        "org_code_taken"
+      );
+    }
+
+    const now = new Date();
+    const [organization] = await tx
+      .insert(organizations)
+      .values({
+        code,
+        name,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    return mapOrganization(organization);
+  });
+}
+
 export async function listInternalAccessUsers(): Promise<InternalAccessUser[]> {
   const db = getDb();
   const rows = await db
     .select({
       account: authAccounts,
       profile: appUserProfiles,
+      organization: organizations,
     })
     .from(authAccounts)
     .innerJoin(appUserProfiles, eq(authAccounts.profileId, appUserProfiles.id))
+    .leftJoin(organizations, eq(appUserProfiles.organizationId, organizations.id))
     .where(inArray(appUserProfiles.role, DASHBOARD_ROLES))
     .orderBy(desc(appUserProfiles.createdAt));
 
@@ -261,6 +356,9 @@ export async function listInternalAccessUsers(): Promise<InternalAccessUser[]> {
     id: row.profile.id,
     name: row.profile.name,
     role: row.profile.role,
+    organizationId: row.organization?.id ?? undefined,
+    organizationCode: row.organization?.code ?? undefined,
+    organizationName: row.organization?.name ?? undefined,
   }));
 }
 
@@ -269,6 +367,7 @@ export async function createInternalAccessUser(input: {
   name: string;
   password: string;
   role: UserRole;
+  organizationId?: string;
 }) {
   const name = normalizeName(input.name);
   const email = normalizeEmail(input.email);
@@ -281,11 +380,30 @@ export async function createInternalAccessUser(input: {
     throw new AuthError("Email is required.", 400, "missing_email");
   }
 
-  if (!["org_admin", "admin"].includes(input.role)) {
+  if (![
+    "org_admin",
+    "admin",
+  ].includes(input.role)) {
     throw new AuthError(
       "Only org admin and admin accounts can be created here.",
       400,
       "invalid_role"
+    );
+  }
+
+  if (input.role === "org_admin" && !input.organizationId) {
+    throw new AuthError(
+      "Select an organization for the org admin account.",
+      400,
+      "missing_org_assignment"
+    );
+  }
+
+  if (input.role === "admin" && input.organizationId) {
+    throw new AuthError(
+      "Platform admins are created without an organization assignment.",
+      400,
+      "invalid_org_assignment"
     );
   }
 
@@ -308,11 +426,30 @@ export async function createInternalAccessUser(input: {
       );
     }
 
+    const organization = input.organizationId
+      ? (
+          await tx
+            .select()
+            .from(organizations)
+            .where(eq(organizations.id, input.organizationId))
+            .limit(1)
+        )[0] ?? null
+      : null;
+
+    if (input.organizationId && !organization) {
+      throw new AuthError(
+        "Selected organization does not exist.",
+        404,
+        "org_not_found"
+      );
+    }
+
     const now = new Date();
     const [profile] = await tx
       .insert(appUserProfiles)
       .values({
         authUserId: `manual-${randomUUID().slice(0, 8)}`,
+        organizationId: organization?.id ?? null,
         name,
         email,
         role: input.role,
@@ -339,6 +476,9 @@ export async function createInternalAccessUser(input: {
       id: profile.id,
       name: profile.name,
       role: profile.role,
+      organizationId: organization?.id ?? undefined,
+      organizationCode: organization?.code ?? undefined,
+      organizationName: organization?.name ?? undefined,
     } satisfies InternalAccessUser;
   });
 }

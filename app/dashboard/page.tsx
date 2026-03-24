@@ -74,13 +74,15 @@ function createDefaultRequestedDeliveryAt() {
   return copy.toISOString().slice(0, 16);
 }
 
-async function loadDashboardSnapshot(): Promise<{
+async function loadDashboardSnapshot(
+  viewer: AuthenticatedUser
+): Promise<{
   error?: string;
   snapshot: DashboardSnapshot | null;
 }> {
   try {
     return {
-      snapshot: await getDashboardSnapshot(),
+      snapshot: await getDashboardSnapshot(viewer),
     };
   } catch (error) {
     return {
@@ -100,7 +102,7 @@ function SetupState({ error }: { error?: string }) {
           The control tower is ready, but the live Neon database is not wired in.
         </h1>
         <p className="mt-6 max-w-3xl text-base leading-8 text-slate-600">
-          Add your connection string in <code>.env.local</code> and run the DB
+          Add your connection string in <code>.env</code> and run the DB
           sync so the authenticated dashboard, RBAC, and operations data can boot.
         </p>
 
@@ -166,6 +168,9 @@ function DashboardView({
               <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 <span className="rounded-full border border-slate-900/10 bg-white/70 px-4 py-2">
                   Project: srs
+                </span>
+                <span className="rounded-full border border-slate-900/10 bg-white/70 px-4 py-2">
+                  Scope: {snapshot.meta.scopeLabel}
                 </span>
                 <span className="rounded-full border border-slate-900/10 bg-white/70 px-4 py-2">
                   Neon Postgres 17
@@ -251,7 +256,7 @@ function DashboardView({
                       Owner tools
                     </p>
                     <p className="mt-2 text-lg font-semibold tracking-tight text-slate-900">
-                      Create org admins and admin users
+                      Create organizations, org admins, and platform admins
                     </p>
                   </div>
                   <ArrowRight className="h-5 w-5 text-slate-500 transition group-hover:translate-x-1 group-hover:text-slate-900" />
@@ -305,6 +310,9 @@ function DashboardView({
                           {alert.customerName}
                         </p>
                         <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[#b96a55]">
+                          {alert.organizationName}
+                        </p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[#b96a55]">
                           {alert.hoursPastDue.toFixed(1)} hours past ETA
                         </p>
                       </div>
@@ -330,7 +338,9 @@ function DashboardView({
         <section id="automation" className="mt-8 grid gap-6 xl:grid-cols-[1.08fr_0.92fr] scroll-mt-32">
           <CreateOrderForm
             defaultRequestedDeliveryAt={defaultRequestedDeliveryAt}
+            organizations={snapshot.organizations}
             products={snapshot.products}
+            viewer={viewer}
           />
           <AutomationConsole
             lastRunAt={snapshot.meta.lastAutomationRunAt}
@@ -367,7 +377,7 @@ function DashboardView({
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{item.name}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                        {item.sku} - {item.category}
+                        {item.organizationCode} - {item.sku} - {item.category}
                       </p>
                     </div>
                     <span className="rounded-full border border-slate-900/10 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -509,7 +519,7 @@ export default async function DashboardPage() {
   }
 
   const viewer = await requireDashboardUser();
-  const { snapshot, error } = await loadDashboardSnapshot();
+  const { snapshot, error } = await loadDashboardSnapshot(viewer);
 
   if (!snapshot) {
     return <SetupState error={error} />;

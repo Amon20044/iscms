@@ -9,18 +9,20 @@ import {
   automationRuns,
   carriers,
   orders,
+  organizations,
   products,
   warehouseInventory,
   warehouses,
   workflowLogs,
 } from "@/lib/db/schema";
 import {
-  seedAutomationSummary,
   seedAuthAccounts,
+  seedAutomationRuns,
   seedCarriers,
   seedInventory,
   seedLogs,
   seedOrders,
+  seedOrganizations,
   seedProducts,
   seedUserProfiles,
   seedWarehouses,
@@ -43,10 +45,30 @@ async function main() {
   await db.delete(warehouses);
   await db.delete(products);
   await db.delete(appUserProfiles);
+  await db.delete(organizations);
+
+  await db.insert(organizations).values(
+    seedOrganizations.map((organization) => ({
+      ...organization,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }))
+  );
+
+  const organizationIdByCode = new Map(
+    seedOrganizations.map((organization) => [organization.code, organization.id])
+  );
 
   await db.insert(appUserProfiles).values(
     seedUserProfiles.map((profile) => ({
-      ...profile,
+      id: profile.id,
+      authUserId: profile.authUserId,
+      organizationId: profile.organizationCode
+        ? organizationIdByCode.get(profile.organizationCode)!
+        : null,
+      name: profile.name,
+      email: profile.email,
+      role: profile.role,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -64,7 +86,13 @@ async function main() {
 
   await db.insert(products).values(
     seedProducts.map((product) => ({
-      ...product,
+      id: product.id,
+      organizationId: organizationIdByCode.get(product.organizationCode)!,
+      sku: product.sku,
+      name: product.name,
+      category: product.category,
+      unitPrice: product.unitPrice,
+      reorderPoint: product.reorderPoint,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -109,6 +137,7 @@ async function main() {
   await db.insert(orders).values(
     seedOrders.map((order) => ({
       id: order.id,
+      organizationId: organizationIdByCode.get(order.organizationCode)!,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
       actorRole: order.actorRole,
@@ -152,11 +181,17 @@ async function main() {
     }))
   );
 
-  await db.insert(automationRuns).values({
-    summary: seedAutomationSummary.join("\n"),
-    actionsCount: seedAutomationSummary.length,
-    createdAt: new Date(),
-  });
+  await db.insert(automationRuns).values(
+    seedAutomationRuns.map((run, index) => ({
+      id: run.id,
+      organizationId: run.organizationCode
+        ? organizationIdByCode.get(run.organizationCode)!
+        : null,
+      summary: run.summary.join("\n"),
+      actionsCount: run.summary.length,
+      createdAt: offsetIso(-index),
+    }))
+  );
 
   const [latestRun] = await db
     .select()
@@ -169,6 +204,7 @@ async function main() {
       {
         ok: true,
         seededOrders: seedOrders.length,
+        seededOrganizations: seedOrganizations.length,
         latestAutomationRun: latestRun?.createdAt ?? null,
       },
       null,

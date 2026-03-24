@@ -16,9 +16,9 @@ type RouteContext = {
 
 export async function GET(_request: Request, context: RouteContext) {
   try {
-    await requireRouteUser(DASHBOARD_ROLES);
+    const user = await requireRouteUser(DASHBOARD_ROLES);
     const { orderId } = await context.params;
-    const order = await getOrderById(orderId);
+    const order = await getOrderById(user, orderId);
     return NextResponse.json({ order });
   } catch (error) {
     return handleRouteError(error);
@@ -30,7 +30,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const user = await requireRouteUser(DASHBOARD_ROLES);
     const { orderId } = await context.params;
     const payload = await request.json();
-    const result = await updateOrder(orderId, {
+    const result = await updateOrder(user, orderId, {
       ...payload,
       actorRole: user.role,
     });
