@@ -95,7 +95,7 @@ export default async function InventoryPage() {
                         <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.13em] ${
                           item.status === "healthy"
                             ? "border-[#4f7d3f]/25 bg-[#f0faea] text-[#3d5e31]"
-                            : item.status === "low"
+                            : item.status === "watch"
                             ? "border-[#b78a2c]/28 bg-[#fff8df] text-[#7a5c17]"
                             : "border-[#cb5e4a]/30 bg-[#fff0eb] text-[#8f3e31]"
                         }`}>
