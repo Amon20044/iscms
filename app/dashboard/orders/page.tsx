@@ -20,7 +20,7 @@ export default async function OrdersPage() {
 
   return (
     <main className="pb-16">
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
         {/* ── Header ── */}
         <section className="glass-panel rounded-[2.4rem] p-7 sm:p-9">

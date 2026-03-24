@@ -1,8 +1,5 @@
 import { Sparkles } from "lucide-react";
-import {
-  CarrierStatusPill,
-  OrderStatePill,
-} from "@/components/dashboard/status-pill";
+import { OrderStatePill } from "@/components/dashboard/status-pill";
 import {
   canManageAdmins,
   requireDashboardUser,
@@ -89,7 +86,7 @@ function OverviewPage({
 
   return (
     <main className="pb-16">
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
         {/* ── Hero ── */}
         <section className="glass-panel rounded-[2.6rem] p-7 sm:p-10">
@@ -128,65 +125,101 @@ function OverviewPage({
           ))}
         </section>
 
-        {/* ── Workflow States + Delay Alerts ── */}
-        <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-          <div className="glass-panel rounded-[2rem] p-6 sm:p-8">
-            <p className="section-kicker">Workflow States</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
-              Order lifecycle at a glance
-            </h2>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {snapshot.stateCounts.map((state) => (
-                <div key={state.state} className="data-tile rounded-[1.6rem] p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <OrderStatePill state={state.state} />
-                    <span className="text-2xl font-semibold tracking-tight text-slate-900">
-                      {state.count}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xs leading-5 text-slate-500">{state.description}</p>
-                </div>
-              ))}
+        {/* ── Workflow States ── */}
+        <section className="mt-5">
+          <div className="glass-panel overflow-hidden rounded-[2rem]">
+            <div className="border-b border-slate-900/6 px-6 py-5">
+              <p className="section-kicker">Workflow States</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
+                Order lifecycle at a glance
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[480px]">
+                <thead>
+                  <tr className="border-b border-slate-900/6 bg-slate-50/50">
+                    {["State", "Count", "Description"].map((h) => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.13em] text-slate-400 first:pl-6 last:pr-6">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/5">
+                  {snapshot.stateCounts.map((state) => (
+                    <tr key={state.state} className="transition-colors hover:bg-white/40">
+                      <td className="px-5 py-4 pl-6">
+                        <OrderStatePill state={state.state} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-2xl font-semibold tabular-nums text-slate-900">{state.count}</span>
+                      </td>
+                      <td className="px-5 py-4 pr-6">
+                        <p className="text-sm leading-6 text-slate-500">{state.description}</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
+        </section>
 
-          <div className="glass-panel rounded-[2rem] p-6 sm:p-8">
-            <div className="flex items-center gap-2">
+        {/* ── Delay Alerts ── */}
+        <section className="mt-5">
+          <div className="glass-panel overflow-hidden rounded-[2rem]">
+            <div className="flex items-center gap-2 border-b border-slate-900/6 px-6 py-5">
               <Sparkles className="h-4 w-4 text-[#ca6b3f]" />
-              <p className="section-kicker">Delay Alerts</p>
+              <div>
+                <p className="section-kicker">Delay Alerts</p>
+                <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">
+                  Orders outside SLA
+                </h2>
+              </div>
             </div>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
-              Orders outside SLA
-            </h2>
-            <div className="mt-5 space-y-3">
-              {snapshot.delayAlerts.length ? (
-                snapshot.delayAlerts.map((alert) => (
-                  <div
-                    key={alert.orderId}
-                    className="rounded-[1.4rem] border border-[#cb5e4a]/18 bg-[#fff0eb] p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#8f3e31]">{alert.customerName}</p>
-                        <p className="mt-0.5 text-xs uppercase tracking-[0.14em] text-[#b96a55]">
-                          {alert.organizationName}
-                        </p>
-                        <p className="mt-0.5 text-xs font-semibold text-[#b96a55]">
-                          {alert.hoursPastDue.toFixed(1)}h past ETA
-                        </p>
-                      </div>
-                      <CarrierStatusPill status="degraded" />
-                    </div>
-                    <p className="mt-2.5 text-sm leading-5 text-[#8f3e31]">{alert.reason}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[1.4rem] border border-[#4f7d3f]/20 bg-[#f0faea] p-4">
-                  <p className="font-semibold text-[#3d5e31]">All clear</p>
-                  <p className="mt-1 text-sm text-[#3d5e31]/70">No orders are currently delayed.</p>
+            {snapshot.delayAlerts.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px]">
+                  <thead>
+                    <tr className="border-b border-slate-900/6 bg-[#fff8f5]">
+                      {["Customer", "Organization", "Hours Past ETA", "Carrier / Warehouse", "Reason"].map((h) => (
+                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.13em] text-[#b96a55] first:pl-6 last:pr-6">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#cb5e4a]/10">
+                    {snapshot.delayAlerts.map((alert) => (
+                      <tr key={alert.orderId} className="bg-[#fff0eb] transition-colors hover:bg-[#ffe8df]">
+                        <td className="px-5 py-4 pl-6">
+                          <p className="text-sm font-semibold text-[#8f3e31]">{alert.customerName}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm text-[#8f3e31]">{alert.organizationName}</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-semibold tabular-nums text-[#8f3e31]">{alert.hoursPastDue.toFixed(1)}h</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="text-sm text-[#8f3e31]">{alert.carrierName}</p>
+                          <p className="mt-0.5 text-xs text-[#b96a55]">{alert.warehouseName}</p>
+                        </td>
+                        <td className="px-5 py-4 pr-6">
+                          <p className="text-sm leading-6 text-[#8f3e31]">{alert.reason}</p>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="px-6 py-6">
+                <div className="rounded-xl border border-[#4f7d3f]/20 bg-[#f0faea] px-5 py-4">
+                  <p className="text-sm font-semibold text-[#3d5e31]">All clear — no delayed orders.</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </section>
 
