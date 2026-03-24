@@ -49,15 +49,6 @@ export default async function LoginPage() {
             instead of generic application sections.
           </p>
 
-          <div className="mt-8 rounded-[1.8rem] border border-slate-900/10 bg-slate-950 p-5 text-white">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/60">
-              Seeded account
-            </p>
-            <p className="mt-3 text-lg font-semibold">Avni Singhal</p>
-            <p className="mt-2 text-sm text-white/80">Role: {USER_ROLE_LABELS.owner}</p>
-            <p className="mt-2 text-sm text-white/80">Email: avni.owner@srs.local</p>
-          </div>
-
           <div className="mt-6 space-y-4">
             {ACCESS_NOTES.map((note) => {
               const Icon = note.icon;
