@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowLeft, Building2, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { Building2, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { AdminAccessPanel } from "@/components/dashboard/admin-access-panel";
 import {
   listInternalAccessUsers,
@@ -19,8 +18,8 @@ export default async function AdminsPage() {
   const orgAdminCount = users.filter((user) => user.role === "org_admin").length;
 
   return (
-    <main className="relative z-10 pb-16">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+    <main className="pb-16">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="glass-panel rounded-[2.6rem] p-7 sm:p-10">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -35,18 +34,9 @@ export default async function AdminsPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700">
-                <ShieldCheck className="h-4 w-4" />
-                Signed in as {viewer.name}
-              </div>
-              <Link
-                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                href="/dashboard"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to Control Tower
-              </Link>
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-900/10 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700">
+              <ShieldCheck className="h-4 w-4" />
+              {viewer.name}
             </div>
           </div>
 

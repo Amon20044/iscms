@@ -97,21 +97,6 @@ export function AutomationConsole({ lastRunAt, summary }: AutomationConsoleProps
           ))}
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-900/8 bg-slate-950 px-4 py-4 text-sm text-white">
-            <p className="text-xs uppercase tracking-[0.16em] text-white/60">Schema</p>
-            <p className="mt-2 font-semibold">Drizzle migrations + typed relations</p>
-          </div>
-          <div className="rounded-2xl border border-slate-900/8 bg-[#184d49] px-4 py-4 text-sm text-white">
-            <p className="text-xs uppercase tracking-[0.16em] text-white/60">Runtime</p>
-            <p className="mt-2 font-semibold">Next 16 route handlers on Node runtime</p>
-          </div>
-          <div className="rounded-2xl border border-slate-900/8 bg-[#7c4e2a] px-4 py-4 text-sm text-white">
-            <p className="text-xs uppercase tracking-[0.16em] text-white/60">Profiles</p>
-            <p className="mt-2 font-semibold">App user roles are ready for Neon Auth IDs</p>
-          </div>
-        </div>
-
         {error ? <p className="mt-4 text-sm text-[#8f3e31]">{error}</p> : null}
       </div>
     </section>

@@ -64,6 +64,9 @@ function isActivePath(pathname: string, href: string) {
 export function SiteHeader({ viewer }: { viewer: AuthenticatedUser | null }) {
   const pathname = usePathname();
 
+  // Dashboard pages have their own sidebar shell — no top header needed
+  if (pathname.startsWith("/dashboard")) return null;
+
   const links: NavigationLink[] = viewer && ["owner", "org_admin", "admin"].includes(viewer.role)
     ? [
         { href: "/dashboard", icon: LayoutDashboard, label: "Control Tower" },
