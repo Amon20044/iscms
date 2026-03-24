@@ -40,4 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# AI / agent tooling (Claude Code, agents config, skill locks)
+.claude/
+.agents/
+skills-lock.json
