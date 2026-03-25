@@ -1,6 +1,10 @@
 import { requireDashboardUser } from "@/lib/auth/service";
+import { listOrganizations } from "@/lib/auth/service";
 import { getDashboardSnapshot } from "@/lib/supply-chain/service";
+import { listProducts } from "@/lib/products/service";
+import { listWarehouses } from "@/lib/inventory/service";
 import { CarrierStatusPill } from "@/components/dashboard/status-pill";
+import { InventoryManagementPanel } from "@/components/dashboard/inventory/inventory-management-panel";
 import { REGION_LABELS } from "@/lib/supply-chain/types";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +12,13 @@ export const runtime = "nodejs";
 
 export default async function InventoryPage() {
   const viewer = await requireDashboardUser();
-  const snapshot = await getDashboardSnapshot(viewer);
+
+  const [snapshot, products, warehouses, organizations] = await Promise.all([
+    getDashboardSnapshot(viewer),
+    listProducts(viewer),
+    listWarehouses(),
+    listOrganizations(),
+  ]);
 
   const lowStockCount = snapshot.inventorySignals.filter(
     (i) => i.status !== "healthy"
@@ -32,7 +42,7 @@ export default async function InventoryPage() {
             </div>
             <div className="flex gap-3">
               <div className="data-tile rounded-2xl px-5 py-3 text-center">
-                <p className="text-2xl font-semibold text-slate-900">{snapshot.inventorySignals.length}</p>
+                <p className="text-2xl font-semibold text-slate-900">{products.length}</p>
                 <p className="mt-0.5 text-xs uppercase tracking-[0.14em] text-slate-400">SKUs</p>
               </div>
               <div className="data-tile rounded-2xl px-5 py-3 text-center">
@@ -47,6 +57,16 @@ export default async function InventoryPage() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* ── Product & Inventory Management (RBAC-gated) ── */}
+        <section className="mt-5">
+          <InventoryManagementPanel
+            viewer={viewer}
+            products={products}
+            organizations={organizations}
+            warehouses={warehouses}
+          />
         </section>
 
         {/* ── Inventory Signals Table ── */}
