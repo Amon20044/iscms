@@ -1,8 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { products, warehouseInventory, warehouses } from "@/lib/db/schema";
-import type { AuthenticatedUser, Warehouse } from "@/lib/supply-chain/types";
+import type { AuthenticatedUser } from "@/lib/supply-chain/types";
 import type { AdjustInventoryInput, InventoryRow } from "@/lib/inventory/types";
+export { listWarehouses } from "@/lib/warehouses/service";
 
 class InventoryError extends Error {
   status: number;
@@ -31,19 +32,6 @@ function getScopedOrganizationId(viewer: AuthenticatedUser) {
   }
 
   return viewer.organizationId;
-}
-
-export async function listWarehouses(): Promise<Warehouse[]> {
-  const db = getDb();
-  const rows = await db.select().from(warehouses).orderBy(asc(warehouses.name));
-  return rows.map((w) => ({
-    id: w.id,
-    name: w.name,
-    city: w.city,
-    region: w.region,
-    handlingHours: w.handlingHours,
-    capacityScore: w.capacityScore,
-  }));
 }
 
 /**

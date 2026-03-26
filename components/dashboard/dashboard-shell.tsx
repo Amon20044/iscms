@@ -7,10 +7,12 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Boxes,
+  Building2,
   LayoutDashboard,
   LogOut,
   Menu,
   ShieldCheck,
+  Truck,
   Warehouse,
   Workflow,
   X,
@@ -30,6 +32,8 @@ function getNavItems(viewer: AuthenticatedUser): NavItem[] {
     { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
     { href: "/dashboard/orders", icon: Boxes, label: "Orders" },
     { href: "/dashboard/inventory", icon: Warehouse, label: "Inventory" },
+    { href: "/dashboard/warehouses", icon: Building2, label: "Warehouses" },
+    { href: "/dashboard/carriers", icon: Truck, label: "Carriers" },
     { href: "/dashboard/automation", icon: Workflow, label: "Automation" },
     { href: "/dashboard/traceability", icon: Activity, label: "Traceability" },
   ];
@@ -137,6 +141,7 @@ export function DashboardShell({
           <BrandMark />
         </Link>
         <button
+          type="button"
           onClick={() => setDrawerOpen(true)}
           className="rounded-xl border border-slate-900/10 bg-white/80 p-2 text-slate-700 transition hover:bg-white"
           aria-label="Open navigation"
@@ -162,6 +167,7 @@ export function DashboardShell({
         <div className="flex items-center justify-between px-4 py-5">
           <BrandMark />
           <button
+            type="button"
             onClick={() => setDrawerOpen(false)}
             className="rounded-xl border border-slate-900/10 bg-white/80 p-1.5 text-slate-600 transition hover:bg-white"
             aria-label="Close navigation"

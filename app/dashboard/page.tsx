@@ -1,40 +1,38 @@
-import { Sparkles } from "lucide-react";
-import { OrderStatePill } from "@/components/dashboard/status-pill";
+import Link from "next/link";
 import {
-  canManageAdmins,
-  requireDashboardUser,
-} from "@/lib/auth/service";
+  Activity,
+  ArrowRight,
+  BarChart2,
+  Boxes,
+  Building2,
+  Sparkles,
+  Truck,
+  Warehouse,
+} from "lucide-react";
+import { requireDashboardUser, canManageAdmins } from "@/lib/auth/service";
 import { isDatabaseConfigured } from "@/lib/db/client";
 import { getDashboardSnapshot } from "@/lib/supply-chain/service";
 import {
-  USER_ROLE_LABELS,
-  type AuthenticatedUser,
-  type DashboardSnapshot,
-} from "@/lib/supply-chain/types";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+  getFinancialKpis,
+  getRevenueTrend,
+  getTopProducts,
+  getPipelineBreakdown,
+  getRevenueByOrg,
+} from "@/lib/analytics/service";
+import { KpiCards } from "@/components/dashboard/analytics/kpi-cards";
+import { RevenueTrendChart } from "@/components/dashboard/analytics/revenue-trend-chart";
+import { TopProductsChart } from "@/components/dashboard/analytics/top-products-chart";
+import { PipelineChart } from "@/components/dashboard/analytics/pipeline-chart";
+import { OrgRevenueChart } from "@/components/dashboard/analytics/org-revenue-chart";
+import { OrderStateTable } from "@/components/dashboard/enterprise/order-state-table";
+import { DelayAlertPanel } from "@/components/dashboard/enterprise/delay-alert-panel";
+import { USER_ROLE_LABELS, type AuthenticatedUser, type DashboardSnapshot } from "@/lib/supply-chain/types";
+import type { FinancialKpis, MonthlyTick, TopProduct, PipelineSlice, OrgRevenue } from "@/lib/analytics/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-async function loadSnapshot(viewer: AuthenticatedUser) {
-  try {
-    return { snapshot: await getDashboardSnapshot(viewer) };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Unable to load dashboard.",
-      snapshot: null,
-    };
-  }
-}
-
+/* ── Setup banner (no DB) ── */
 function SetupBanner({ error }: { error?: string }) {
   return (
     <main className="pb-16">
@@ -52,8 +50,8 @@ function SetupBanner({ error }: { error?: string }) {
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {[
               { step: "1", label: "Apply schema", cmd: "npm run db:push -- --force" },
-              { step: "2", label: "Seed owner data", cmd: "npm run db:seed" },
-              { step: "3", label: "Start app", cmd: "npm run dev" },
+              { step: "2", label: "Seed data",    cmd: "npm run db:seed" },
+              { step: "3", label: "Start app",    cmd: "npm run dev" },
             ].map((item) => (
               <div key={item.step} className="data-tile rounded-[1.8rem] p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -74,169 +72,168 @@ function SetupBanner({ error }: { error?: string }) {
   );
 }
 
-function OverviewPage({
-  snapshot,
+/* ── Quick-nav shortcuts ── */
+const NAV_SHORTCUTS = [
+  { href: "/dashboard/orders",     icon: Boxes,     label: "Orders" },
+  { href: "/dashboard/inventory",  icon: Warehouse, label: "Inventory" },
+  { href: "/dashboard/warehouses", icon: Building2, label: "Warehouses" },
+  { href: "/dashboard/carriers",   icon: Truck,     label: "Carriers" },
+  { href: "/dashboard/traceability", icon: Activity, label: "Traceability" },
+];
+
+/* ── Main dashboard ── */
+function EnterpriseDashboard({
   viewer,
+  snapshot,
+  kpis,
+  trend,
+  topProducts,
+  pipeline,
+  orgRevenue,
 }: {
-  snapshot: DashboardSnapshot;
   viewer: AuthenticatedUser;
+  snapshot: DashboardSnapshot;
+  kpis: FinancialKpis;
+  trend: MonthlyTick[];
+  topProducts: TopProduct[];
+  pipeline: PipelineSlice[];
+  orgRevenue: OrgRevenue[];
 }) {
+  const isOwnerOrAdmin = viewer.role === "owner" || viewer.role === "admin";
   const showOwnerTools = canManageAdmins(viewer.role);
-  const delayCount = snapshot.delayAlerts.length;
+
+  function formatRelativeTime(iso: string) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diff / 60_000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  }
 
   return (
     <main className="pb-16">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* ── Hero ── */}
-        <section className="glass-panel rounded-[2.6rem] p-7 sm:p-10">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="section-kicker">Control Tower</p>
-            <span className="rounded-full border border-slate-900/10 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              {USER_ROLE_LABELS[viewer.role]}
-            </span>
-            {delayCount > 0 && (
-              <span className="rounded-full border border-[#cb5e4a]/30 bg-[#fff0eb] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#8f3e31]">
-                {delayCount} delay{delayCount > 1 ? "s" : ""}
+        {/* ── Command Header ── */}
+        <section className="glass-panel rounded-[2rem] px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* Left: identity */}
+            <div className="flex items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+                    {viewer.name.split(" ")[0]}
+                  </h1>
+                  <span className="rounded-full border border-slate-900/10 bg-white/70 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    {USER_ROLE_LABELS[viewer.role]}
+                  </span>
+                  {viewer.organizationName && (
+                    <span className="hidden text-xs text-slate-400 sm:inline">
+                      · {viewer.organizationName}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Control Tower · Last run {formatRelativeTime(snapshot.meta.lastAutomationRunAt)}
+                </p>
+              </div>
+            </div>
+
+            {/* Right: alert pills */}
+            <div className="flex items-center gap-2">
+              {snapshot.delayAlerts.length > 0 && (
+                <Link
+                  href="/dashboard/orders"
+                  className="flex items-center gap-1.5 rounded-full border border-[#cb5e4a]/30 bg-[#fff0eb] px-3 py-1.5 text-xs font-semibold text-[#8f3e31] transition hover:bg-[#ffe8df]"
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#cb5e4a]" />
+                  {snapshot.delayAlerts.length} delay{snapshot.delayAlerts.length > 1 ? "s" : ""}
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              )}
+              <span className="rounded-full border border-slate-900/8 bg-white/60 px-3 py-1.5 text-xs font-semibold tabular-nums text-slate-500">
+                {snapshot.orders.length} orders
               </span>
-            )}
-          </div>
-          <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-            Welcome back, {viewer.name.split(" ")[0]}.
-          </h1>
-          <p className="mt-3 text-sm text-slate-500">
-            {snapshot.meta.scopeLabel}&nbsp;·&nbsp;Last automation:{" "}
-            {formatDateTime(snapshot.meta.lastAutomationRunAt)}
-          </p>
-        </section>
-
-        {/* ── Workflow Stats ── */}
-        <section className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {snapshot.workflowStats.map((stat) => (
-            <div key={stat.label} className="glass-panel rounded-[1.8rem] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                {stat.label}
-              </p>
-              <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-900">
-                {stat.value}
-              </p>
-              <p className="mt-1.5 text-xs leading-5 text-slate-400">{stat.hint}</p>
-            </div>
-          ))}
-        </section>
-
-        {/* ── Workflow States ── */}
-        <section className="mt-5">
-          <div className="glass-panel overflow-hidden rounded-[2rem]">
-            <div className="border-b border-slate-900/6 px-6 py-5">
-              <p className="section-kicker">Workflow States</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
-                Order lifecycle at a glance
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[480px]">
-                <thead>
-                  <tr className="border-b border-slate-900/6 bg-slate-50/50">
-                    {["State", "Count", "Description"].map((h) => (
-                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.13em] text-slate-400 first:pl-6 last:pr-6">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-900/5">
-                  {snapshot.stateCounts.map((state) => (
-                    <tr key={state.state} className="transition-colors hover:bg-white/40">
-                      <td className="px-5 py-4 pl-6">
-                        <OrderStatePill state={state.state} />
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="text-2xl font-semibold tabular-nums text-slate-900">{state.count}</span>
-                      </td>
-                      <td className="px-5 py-4 pr-6">
-                        <p className="text-sm leading-6 text-slate-500">{state.description}</p>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <span className="hidden rounded-full border border-slate-900/8 bg-white/60 px-3 py-1.5 text-xs font-semibold tabular-nums text-slate-500 sm:inline">
+                {snapshot.products.length} SKUs
+              </span>
             </div>
           </div>
+
+          {/* Quick-nav shortcuts */}
+          <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-900/6 pt-4">
+            {NAV_SHORTCUTS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-900/8 bg-white/50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-900/16 hover:bg-white hover:text-slate-900"
+                >
+                  <Icon className="h-3 w-3" />
+                  {s.label}
+                </Link>
+              );
+            })}
+          </div>
         </section>
+
+        {/* ── KPI Strip ── */}
+        <section className="mt-4">
+          <KpiCards kpis={kpis} />
+        </section>
+
+        {/* ── Main Charts: Revenue Trend + Pipeline ── */}
+        <section className="mt-4 grid gap-4 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <RevenueTrendChart data={trend} />
+          </div>
+          <div className="xl:col-span-1">
+            <PipelineChart data={pipeline} />
+          </div>
+        </section>
+
+        {/* ── Second row: Top Products + Order Health ── */}
+        <section className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TopProductsChart data={topProducts} />
+          <OrderStateTable states={snapshot.stateCounts} />
+        </section>
+
+        {/* ── Org Revenue Breakdown (owner/admin) ── */}
+        {isOwnerOrAdmin && orgRevenue.length > 0 && (
+          <section className="mt-4">
+            <OrgRevenueChart data={orgRevenue} />
+          </section>
+        )}
 
         {/* ── Delay Alerts ── */}
-        <section className="mt-5">
-          <div className="glass-panel overflow-hidden rounded-[2rem]">
-            <div className="flex items-center gap-2 border-b border-slate-900/6 px-6 py-5">
-              <Sparkles className="h-4 w-4 text-[#ca6b3f]" />
-              <div>
-                <p className="section-kicker">Delay Alerts</p>
-                <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">
-                  Orders outside SLA
-                </h2>
-              </div>
-            </div>
-            {snapshot.delayAlerts.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px]">
-                  <thead>
-                    <tr className="border-b border-slate-900/6 bg-[#fff8f5]">
-                      {["Customer", "Organization", "Hours Past ETA", "Carrier / Warehouse", "Reason"].map((h) => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.13em] text-[#b96a55] first:pl-6 last:pr-6">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#cb5e4a]/10">
-                    {snapshot.delayAlerts.map((alert) => (
-                      <tr key={alert.orderId} className="bg-[#fff0eb] transition-colors hover:bg-[#ffe8df]">
-                        <td className="px-5 py-4 pl-6">
-                          <p className="text-sm font-semibold text-[#8f3e31]">{alert.customerName}</p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="text-sm text-[#8f3e31]">{alert.organizationName}</p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="text-sm font-semibold tabular-nums text-[#8f3e31]">{alert.hoursPastDue.toFixed(1)}h</p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="text-sm text-[#8f3e31]">{alert.carrierName}</p>
-                          <p className="mt-0.5 text-xs text-[#b96a55]">{alert.warehouseName}</p>
-                        </td>
-                        <td className="px-5 py-4 pr-6">
-                          <p className="text-sm leading-6 text-[#8f3e31]">{alert.reason}</p>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="px-6 py-6">
-                <div className="rounded-xl border border-[#4f7d3f]/20 bg-[#f0faea] px-5 py-4">
-                  <p className="text-sm font-semibold text-[#3d5e31]">All clear — no delayed orders.</p>
-                </div>
-              </div>
-            )}
-          </div>
+        <section className="mt-4">
+          <DelayAlertPanel alerts={snapshot.delayAlerts} />
         </section>
 
-        {/* ── Last Automation Summary ── */}
-        <section className="mt-5">
-          <div className="rounded-[2rem] bg-slate-950 p-6 sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">
-              Last automation run
-            </p>
-            <p className="mt-2 text-lg font-semibold tracking-tight text-white">
-              {formatDateTime(snapshot.meta.lastAutomationRunAt)}
-            </p>
-            <div className="mt-5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── Last Automation Run ── */}
+        <section className="mt-4">
+          <div className="rounded-[2rem] bg-slate-950 px-6 py-5 sm:px-8">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-3.5 w-3.5 text-white/40" />
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">
+                  Last automation run
+                </p>
+              </div>
+              <Link
+                href="/dashboard/automation"
+                className="flex items-center gap-1 text-xs font-semibold text-white/40 transition hover:text-white/70"
+              >
+                Run console <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {snapshot.meta.lastAutomationSummary.map((item, i) => (
                 <div
                   key={`${snapshot.meta.lastAutomationRunAt}-${i}`}
-                  className="rounded-xl bg-white/[0.07] px-4 py-3 text-sm text-white/70"
+                  className="rounded-xl bg-white/[0.06] px-4 py-3 text-sm text-white/65"
                 >
                   {item}
                 </div>
@@ -245,38 +242,80 @@ function OverviewPage({
           </div>
         </section>
 
-        {/* ── Owner Tools ── */}
+        {/* ── Owner tools strip ── */}
         {showOwnerTools && (
-          <section className="mt-5">
+          <section className="mt-4 grid gap-3 sm:grid-cols-2">
             <Link
-              className="group flex items-center justify-between rounded-[1.8rem] border border-slate-900/10 bg-white/75 px-6 py-5 transition hover:border-slate-900/18 hover:bg-white"
               href="/dashboard/admins"
+              className="group flex items-center justify-between rounded-[1.6rem] border border-slate-900/10 bg-white/70 px-5 py-4 transition hover:border-slate-900/18 hover:bg-white"
             >
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  Owner tools
-                </p>
-                <p className="mt-1.5 text-lg font-semibold tracking-tight text-slate-900">
-                  Manage organizations and admin access
+                <p className="section-kicker">Owner tools</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  Team &amp; admin access
                 </p>
               </div>
-              <ArrowRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:translate-x-1 group-hover:text-slate-900" />
+              <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-900" />
+            </Link>
+            <Link
+              href="/dashboard/warehouses"
+              className="group flex items-center justify-between rounded-[1.6rem] border border-slate-900/10 bg-white/70 px-5 py-4 transition hover:border-slate-900/18 hover:bg-white"
+            >
+              <div>
+                <p className="section-kicker">Network</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  Warehouses &amp; carriers
+                </p>
+              </div>
+              <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-900" />
             </Link>
           </section>
         )}
+
+        {/* ── Data footnote ── */}
+        <p className="mt-5 text-center text-[11px] text-slate-400">
+          Revenue & profit derived from delivered orders · COGS estimated at 62% · Trailing 12 months
+        </p>
 
       </div>
     </main>
   );
 }
 
+/* ── Page entry ── */
 export default async function DashboardPage() {
   if (!isDatabaseConfigured()) return <SetupBanner />;
 
   const viewer = await requireDashboardUser();
-  const { snapshot, error } = await loadSnapshot(viewer);
 
-  if (!snapshot) return <SetupBanner error={error} />;
+  let snapshot, kpis, trend, topProducts, pipeline, orgRevenue;
+  try {
+    [snapshot, kpis, trend, topProducts, pipeline, orgRevenue] =
+      await Promise.all([
+        getDashboardSnapshot(viewer),
+        getFinancialKpis(viewer),
+        getRevenueTrend(viewer),
+        getTopProducts(viewer),
+        getPipelineBreakdown(viewer),
+        getRevenueByOrg(viewer),
+      ]);
+  } catch (error) {
+    return (
+      <SetupBanner
+        error={error instanceof Error ? error.message : "Unable to load dashboard."}
+      />
+    );
+  }
 
-  return <OverviewPage snapshot={snapshot} viewer={viewer} />;
+  return (
+    <EnterpriseDashboard
+      viewer={viewer}
+      snapshot={snapshot}
+      kpis={kpis}
+      trend={trend}
+      topProducts={topProducts}
+      pipeline={pipeline}
+      orgRevenue={orgRevenue}
+    />
+  );
 }

@@ -7,7 +7,6 @@ import { adjustInventoryStock, isInventoryError } from "@/lib/inventory/service"
 import type { CreateProductFormState } from "@/lib/products/types";
 import type { AdjustInventoryFormState } from "@/lib/inventory/types";
 
-export type { CreateProductFormState, AdjustInventoryFormState };
 
 export async function createProductAction(
   _state: CreateProductFormState,

@@ -35,6 +35,7 @@ export interface Product {
 
 export interface Warehouse {
   id: string;
+  code: string;
   name: string;
   city: string;
   region: Region;
@@ -53,6 +54,7 @@ export interface WarehouseInventory {
 
 export interface Carrier {
   id: string;
+  code: string;
   name: string;
   status: CarrierStatus;
   averageEtaHours: number;

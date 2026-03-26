@@ -882,6 +882,7 @@ export async function getDashboardSnapshot(
     products: productRows.map(mapProduct),
     warehouses: warehousesForView.map((warehouse) => ({
       id: warehouse.id,
+      code: warehouse.code,
       name: warehouse.name,
       city: warehouse.city,
       region: warehouse.region,
@@ -890,6 +891,7 @@ export async function getDashboardSnapshot(
     })),
     carriers: carriersForView.map((carrier) => ({
       id: carrier.id,
+      code: carrier.code,
       name: carrier.name,
       status: carrier.status,
       averageEtaHours: carrier.averageEtaHours,
